@@ -38,3 +38,9 @@ def ask(req: AskRequest):
     if not generated["sql"]:
         return {**generated, "result": None}
     return {**generated, "result": db.execute(generated["sql"])}
+
+
+@app.get("/api/health")
+def health():
+    """Confirms the database file is bundled and readable."""
+    return {"ok": True, "tables_and_views": schema().count("\n") + 1}
