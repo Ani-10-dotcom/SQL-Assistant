@@ -64,6 +64,13 @@ def _first_keyword(sql: str) -> str:
     return match.group(0).upper() if match else ""
 
 
+def _display_value(value):
+    # BLOB columns (e.g. Employees.Photo) can't be sent as JSON text.
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return f"<binary data, {len(value):,} bytes>"
+    return value
+
+
 def _run_read(sql: str) -> dict:
     conn = _open_readonly()
     try:
@@ -75,7 +82,7 @@ def _run_read(sql: str) -> dict:
         return {
             "kind": "read",
             "columns": columns,
-            "rows": [list(r) for r in rows[:MAX_ROWS]],
+            "rows": [[_display_value(v) for v in r] for r in rows[:MAX_ROWS]],
             "truncated": truncated,
         }
     finally:
