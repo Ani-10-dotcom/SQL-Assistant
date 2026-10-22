@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQL Assistant</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6676;
+    --border: #d9dde4; --accent: #2f5bd3; --accent-text: #ffffff;
+    --code-bg: #f1f3f7; --warn-bg: #fff6e0; --warn-border: #e7c76a;
+    --error-bg: #fdecec; --error-border: #e39b9b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1c2028; --text: #e6e9ef; --muted: #9aa3b2;
+      --border: #303643; --accent: #6d8ff0; --accent-text: #0f1320;
+      --code-bg: #232833; --warn-bg: #3a3220; --warn-border: #8a7330;
+      --error-bg: #3a2222; --error-border: #8a4545;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .subtitle { margin: 0 0 24px; color: var(--muted); }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 20px;
+  }
+  label { display: block; font-weight: 600; margin: 0 0 6px; }
+  .field { margin-bottom: 16px; }
+  textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; resize: vertical;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #query { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; background: var(--code-bg); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-weight: 600;
+    background: var(--accent); color: var(--accent-text); cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 6px 12px; font-weight: 500; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .explanation { margin: 10px 0 0; color: var(--muted); }
+  .notice { border: 1px solid var(--warn-border); background: var(--warn-bg); border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+  .error { border-color: var(--error-border); background: var(--error-bg); }
+  .table-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th { background: var(--code-bg); position: sticky; top: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SQL Assistant</h1>
+  <p class="subtitle">Describe what you need and get a SQLite query for the Northwind sample database. The database is read-only, so nothing is ever changed.</p>
+
+  <form id="ask-form" class="card">
+    <div class="field">
+      <label for="scenario">Scenario</label>
+      <textarea id="scenario" rows="3" placeholder="e.g. I'm reviewing late deliveries for the sales team."></textarea>
+    </div>
+    <div class="field">
+      <label for="question">Question</label>
+      <textarea id="question" rows="3" required placeholder="e.g. Show orders shipped after their required date in 2023."></textarea>
+    </div>
+    <div class="row">
+      <button type="submit" id="submit">Generate query</button>
+      <span class="hint" id="status"></span>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="row" style="justify-content: space-between; margin-bottom: 6px;">
+      <label for="query" style="margin: 0;">Query</label>
+      <button type="button" class="secondary" id="copy">Copy</button>
+    </div>
+    <textarea id="query" rows="8" readonly placeholder="Your query will appear here."></textarea>
+    <p class="explanation" id="explanation" hidden></p>
+    <div id="result"></div>
+  </section>
+</main>
+
+<script>
+  const form = document.getElementById("ask-form");
+  const submit = document.getElementById("submit");
+  const statusEl = document.getElementById("status");
+  const queryEl = document.getElementById("query");
+  const explanationEl = document.getElementById("explanation");
+  const resultEl = document.getElementById("result");
+
+  function notice(text, isError) {
+    const div = document.createElement("div");
+    div.className = "notice" + (isError ? " error" : "");
+    div.textContent = text;
+    return div;
+  }
+
+  function renderTable(result) {
+    const frag = document.createDocumentFragment();
+    const count = result.rows.length;
+    const info = document.createElement("p");
+    info.className = "hint";
+    info.style.margin = "12px 0 0";
+    info.textContent = result.truncated
+      ? `Showing the first ${count} rows.`
+      : `${count} row${count === 1 ? "" : "s"} returned.`;
+    frag.appendChild(info);
+    if (!count) return frag;
+
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    const table = document.createElement("table");
+    const head = table.createTHead().insertRow();
+    result.columns.forEach(c => { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); });
+    const body = table.createTBody();
+    result.rows.forEach(r => {
+      const tr = body.insertRow();
+      r.forEach(v => { tr.insertCell().textContent = v === null ? "NULL" : v; });
+    });
+    wrap.appendChild(table);
+    frag.appendChild(wrap);
+    return frag;
+  }
+
+  function renderResult(result) {
+    resultEl.replaceChildren();
+    if (!result) return;
+    if (result.kind === "read") resultEl.appendChild(renderTable(result));
+    else if (result.kind === "write") {
+      const n = result.affected_rows;
+      resultEl.appendChild(notice(
+        `This query would affect ${n} record${n === 1 ? "" : "s"}. It was not applied: the database is read-only and was not changed.`
+      ));
+    } else if (result.kind === "not_run") resultEl.appendChild(notice(result.message));
+    else if (result.kind === "error") resultEl.appendChild(notice("Error: " + result.error, true));
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const question = document.getElementById("question").value.trim();
+    if (!question) return;
+    submit.disabled = true;
+    statusEl.textContent = "Generating…";
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario: document.getElementById("scenario").value, question }),
+      });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      queryEl.value = data.sql || "";
+      explanationEl.textContent = data.explanation || "";
+      explanationEl.hidden = !data.explanation;
+      renderResult(data.result);
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.textContent = "";
+      renderResult({ kind: "error", error: err.message });
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  document.getElementById("copy").addEventListener("click", async () => {
+    if (!queryEl.value) return;
+    try { await navigator.clipboard.writeText(queryEl.value); statusEl.textContent = "Query copied."; }
+    catch { queryEl.select(); }
+  });
+</script>
+</body>
+</html>
