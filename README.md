@@ -34,4 +34,4 @@ Open http://127.0.0.1:8000.
 1. Put this folder in a Git repo and import it at vercel.com/new (or run `vercel` in the folder).
    Vercel detects the FastAPI app in `app.py` automatically.
 2. In the project's **Settings → Environment Variables**, add `GROQ_API_KEY`.
-3. Optional: set `GROQ_MODEL` to change the model (default `llama-3.3-70b-versatile`).
+3. Optional: set `GROQ_MODEL` to change the model (default `openai/gpt-oss-120b`).

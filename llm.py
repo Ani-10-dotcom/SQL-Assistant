@@ -5,7 +5,7 @@ import os
 
 from groq import Groq
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 SYSTEM_PROMPT = """You are an expert SQL assistant for a SQLite copy of the Northwind database.
 
